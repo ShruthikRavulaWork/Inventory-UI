@@ -1,7 +1,19 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import MaterialTable from "@material-table/core";
-import { Button, Avatar, Box, Snackbar, Alert, Tabs, Tab } from "@mui/material";
+import {
+  Button,
+  Avatar,
+  Box,
+  Snackbar,
+  Alert,
+  Tabs,
+  Tab,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+} from "@mui/material";
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -13,11 +25,68 @@ import AnalyticsPage from "./AnalyticsPage";
 
 const ItemsTable = ({ tableRef, onEdit, onDelete }) => {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "error" });
+  const [searchField, setSearchField] = useState("ItemName");
+  const [suppliers, setSuppliers] = useState([]);
+  const [selectedSupplier, setSelectedSupplier] = useState('');
+
+  useEffect(() => {
+    api.get("/items/suppliers")
+      .then(response => {
+        setSuppliers(response.data);
+      })
+      .catch(error => {
+        setSnackbar({ open: true, message: `Failed to load suppliers: ${getErrorMessage(error)}`, severity: "error" });
+      });
+  }, []);
 
   const handleSnackbarClose = () => setSnackbar({ ...snackbar, open: false });
 
+  const handleSupplierFilterChange = (event) => {
+    const supplierName = event.target.value;
+    setSelectedSupplier(supplierName);
+    if (tableRef.current) {
+        tableRef.current.onQueryChange();
+    }
+  };
+
   return (
     <>
+      {/* FIX: This container now aligns the controls to the right end of the screen */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 2 }}>
+        {/* FIX: "Filter by Supplier" now comes first */}
+        <FormControl fullWidth variant="outlined" sx={{ maxWidth: '250px' }}>
+          <InputLabel>Filter by Supplier</InputLabel>
+          <Select
+            value={selectedSupplier}
+            onChange={handleSupplierFilterChange}
+            label="Filter by Supplier"
+          >
+            <MenuItem value="">
+              <em>None (Show All)</em>
+            </MenuItem>
+            {suppliers.map(supplier => (
+              <MenuItem key={supplier.UserID} value={supplier.Username}>
+                {supplier.Username}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* FIX: "Search By" now comes second */}
+        <FormControl fullWidth variant="outlined" sx={{ maxWidth: '250px' }}>
+          <InputLabel>Search By</InputLabel>
+          <Select
+            value={searchField}
+            onChange={(e) => setSearchField(e.target.value)}
+            label="Search By"
+            disabled={!!selectedSupplier}
+          >
+            <MenuItem value="ItemName">Item Name</MenuItem>
+            <MenuItem value="SupplierName">Supplier Name</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+
       <MaterialTable
         title="Inventory Management"
         tableRef={tableRef}
@@ -36,14 +105,16 @@ const ItemsTable = ({ tableRef, onEdit, onDelete }) => {
         ]}
         data={(query) =>
           new Promise((resolve, reject) => {
-            api.get("/items", {
-                params: {
-                  pageNumber: query.page + 1,
-                  pageSize: query.pageSize,
-                  searchTerm: query.search,
-                  searchField: "ItemName",
-                },
-              })
+            const isFilteringBySupplier = !!selectedSupplier;
+            
+            const params = {
+              pageNumber: query.page + 1,
+              pageSize: query.pageSize,
+              searchTerm: isFilteringBySupplier ? selectedSupplier : query.search,
+              searchField: isFilteringBySupplier ? 'SupplierName' : searchField,
+            };
+
+            api.get("/items", { params })
               .then((result) => resolve({ data: result.data.items, page: query.page, totalCount: result.data.totalCount }))
               .catch((error) => {
                 setSnackbar({ open: true, message: getErrorMessage(error), severity: "error" });
@@ -55,7 +126,12 @@ const ItemsTable = ({ tableRef, onEdit, onDelete }) => {
           { icon: () => <EditIcon />, tooltip: "Edit Item", onClick: (event, rowData) => onEdit(rowData) },
           { icon: () => <DeleteIcon color="error" />, tooltip: "Delete Item", onClick: (event, rowData) => onDelete(rowData) },
         ]}
-        options={{ actionsColumnIndex: -1, search: true, paging: true, headerStyle: { backgroundColor: "#f5f5f5", fontWeight: "bold" } }}
+        options={{ 
+            actionsColumnIndex: -1, 
+            search: !selectedSupplier, 
+            paging: true, 
+            headerStyle: { backgroundColor: "#f5f5f5", fontWeight: "bold" } 
+        }}
       />
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleSnackbarClose}>
           <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: "100%" }}>
